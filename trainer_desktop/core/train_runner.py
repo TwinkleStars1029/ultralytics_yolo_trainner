@@ -21,9 +21,13 @@ class TrainParams:
     project: str
     data_name: str
     extra_args: str = ""
+    epochs: int = 200
     gpu: Optional[str] = None
     runs_dir: Path = Path("runs")
     resume: bool = False
+    # Disable Weights & Biases by default to avoid Ultralytics callback crashes
+    # (AttributeError on DetMetrics.curves_results in some versions).
+    use_wandb: bool = False
 
 
 class TrainRunner:
@@ -118,11 +122,23 @@ class TrainRunner:
         ]
         if p.resume:
             args.append("--resume")
+        # Ensure epochs comes from dedicated field; strip any epochs flags from extra_args
         extra = p.extra_args.strip()
+        if extra:
+            # remove patterns like --epochs=NN or --epochs NN (also --epoch)
+            import re as _re
+            extra = _re.sub(r"(?i)(?:--epochs?|--epoch)\s*(?:=\s*|\s+)\d+", "", extra)
+            extra = " ".join(part for part in extra.split() if part)
+        # add epochs explicitly (default 200)
+        if p.epochs and int(p.epochs) > 0:
+            args.append(f"--epochs={int(p.epochs)}")
         if extra:
             # naive split: pass as single string to bash -lc context
             args.append(extra)
         py_cmd = " ".join(args)
+        # Disable W&B unless explicitly enabled
+        if not p.use_wandb:
+            py_cmd = f"WANDB_DISABLED=true " + py_cmd
         if p.gpu:
             py_cmd = f"CUDA_VISIBLE_DEVICES={p.gpu} " + py_cmd
         return py_cmd

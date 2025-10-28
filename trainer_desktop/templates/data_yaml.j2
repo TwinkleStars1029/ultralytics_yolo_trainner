@@ -1,9 +1,10 @@
 path: "{{ path }}"
-train: "train.txt"
-val: "val.txt"
-test: "test.txt"
+
+train: train.txt
+val: val.txt
+test: test.txt
 
 names:
-{% for i, name in enumerate(class_names) -%}
-  {{ i }}: {{ name }}
-{% endfor -%}
+{% for i, name in enumerate(class_names) %}
+  {{ i }}: "{{ name }}"
+{% endfor %}

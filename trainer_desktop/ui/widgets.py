@@ -25,10 +25,24 @@ class LabeledEntry(tk.Frame):
 class LogBox(scrolledtext.ScrolledText):
     def __init__(self, master, **kwargs):
         super().__init__(master, state="disabled", height=12, **kwargs)
+        # Define simple severity tags
+        try:
+            self.tag_configure("error", foreground="red")
+            self.tag_configure("warn", foreground="orange")
+        except Exception:
+            pass
 
     def _append(self, text: str) -> None:
         self.config(state="normal")
-        self.insert(tk.END, text + "\n")
+        tag = None
+        if text.startswith("[ERROR]"):
+            tag = "error"
+        elif text.startswith("[WARN]") or text.startswith("[WARNING]"):
+            tag = "warn"
+        if tag:
+            self.insert(tk.END, text + "\n", (tag,))
+        else:
+            self.insert(tk.END, text + "\n")
         self.see(tk.END)
         self.config(state="disabled")
 

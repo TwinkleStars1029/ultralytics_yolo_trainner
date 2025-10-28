@@ -31,11 +31,14 @@ class TrainPage(tk.Frame):
         self.e_project = LabeledEntry(form, "Project:", width=32)
         self.e_project.set("demo_project")
         self.e_data = LabeledEntry(form, "DataName:", width=32)
+        self.e_epochs = LabeledEntry(form, "Epochs:", width=10)
+        self.e_epochs.set("200")
         self.e_extra = LabeledEntry(form, "Extra args:", width=60)
 
         self.e_container.pack(fill=tk.X, pady=2)
         self.e_project.pack(fill=tk.X, pady=2)
         self.e_data.pack(fill=tk.X, pady=2)
+        self.e_epochs.pack(fill=tk.X, pady=2)
         self.e_extra.pack(fill=tk.X, pady=2)
 
         adv = tk.Frame(self)
@@ -51,14 +54,10 @@ class TrainPage(tk.Frame):
         ctrl.pack(fill=tk.X, padx=10, pady=4)
         self.btn_start = ttk.Button(ctrl, text="Start Training", command=self.on_start)
         self.btn_stop = ttk.Button(ctrl, text="Stop", command=self.on_stop, state=tk.DISABLED)
-        self.btn_resume = ttk.Button(ctrl, text="Resume", command=self.on_resume)
         self.btn_open = ttk.Button(ctrl, text="Open Output Folder", command=self.on_open_folder)
-        self.btn_save = ttk.Button(ctrl, text="Export Log", command=self.on_export_log)
         self.btn_start.pack(side=tk.LEFT)
         self.btn_stop.pack(side=tk.LEFT, padx=6)
-        self.btn_resume.pack(side=tk.LEFT)
         self.btn_open.pack(side=tk.LEFT, padx=12)
-        self.btn_save.pack(side=tk.LEFT)
 
         # Progress + status
         p_row = tk.Frame(self)
@@ -110,7 +109,28 @@ class TrainPage(tk.Frame):
     def on_start(self) -> None:
         if self.runner.is_running():
             return
-        params = self._collect_params(resume=self.var_resume.get())
+        # Empty field validation for Project and DataName
+        proj_txt = (self.e_project.get() or "").strip()
+        data_txt = (self.e_data.get() or "").strip()
+        missing = False
+        if not proj_txt:
+            self._log_app("[ERROR] Project 不可為空")
+            missing = True
+        if not data_txt:
+            self._log_app("[ERROR] DataName 不可為空")
+            missing = True
+        if missing:
+            return
+        try:
+            params = self._collect_params(resume=self.var_resume.get())
+        except ValueError as e:
+            messagebox.showerror("Invalid Input", str(e))
+            return
+        # Prevent accidental overwrite: if runs/<Project> exists and not resuming, block start
+        run_path = self.runs_dir / (params.project or "")
+        if not params.resume and run_path.exists():
+            self._log_app("[ERROR] project name重複，請更換名稱")
+            return
         ok, msg = TrainRunner.quick_precheck(params.container)
         if not ok:
             messagebox.showerror("Precheck failed", msg)
@@ -129,13 +149,6 @@ class TrainPage(tk.Frame):
             self._log_app("[Stop] Sending stop signal...")
             self.runner.stop()
 
-    def on_resume(self) -> None:
-        if self.runner.is_running():
-            messagebox.showinfo("Resume", "Training already running.")
-            return
-        self.var_resume.set(True)
-        self.on_start()
-
     def on_open_folder(self) -> None:
         proj = self.e_project.get() or ""
         if not proj:
@@ -145,30 +158,24 @@ class TrainPage(tk.Frame):
         path.mkdir(parents=True, exist_ok=True)
         self._open_path(path)
 
-    def on_export_log(self) -> None:
-        proj = self.e_project.get().strip()
-        if not proj:
-            messagebox.showinfo("Export Log", "Please enter Project name first.")
-            return
-        logp = self.runs_dir / proj / "train.log"
-        if not logp.exists():
-            messagebox.showwarning("Export Log", f"Log not found: {logp}")
-            return
-        # Let user choose destination via a simple file dialog substitute: copy next to log with _copy suffix
-        dst = logp.with_name(logp.stem + "_copy" + logp.suffix)
-        try:
-            dst.write_text(logp.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
-            self._log_app(f"[Saved] {dst}")
-        except Exception as e:  # noqa: BLE001
-            messagebox.showerror("Export Log", str(e))
+    
 
     # ---------- Helpers ----------
     def _collect_params(self, *, resume: bool) -> TrainParams:
+        # Validate epochs
+        ep_str = self.e_epochs.get() or "200"
+        try:
+            ep = int(ep_str)
+        except Exception:
+            raise ValueError("Epochs must be an integer")
+        if ep <= 0:
+            raise ValueError("Epochs must be > 0")
         return TrainParams(
             container=self.e_container.get() or "ultralytics_1016",
-            project=self.e_project.get() or "project",
-            data_name=self.e_data.get() or "dataset",
+            project=(self.e_project.get() or "").strip(),
+            data_name=(self.e_data.get() or "").strip(),
             extra_args=self.e_extra.get(),
+            epochs=ep,
             gpu=self.var_gpu.get().strip() or None,
             runs_dir=self.runs_dir,
             resume=resume,

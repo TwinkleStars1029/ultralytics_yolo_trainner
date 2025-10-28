@@ -5,6 +5,7 @@ from pathlib import Path
 from tkinter import messagebox
 
 from ..core.data_prep import DataPrepConfig, prepare_dataset
+from ..core.yaml_gen import generate_yaml
 from ..core.utils import timestamp
 from .widgets import LabeledEntry, LogBox, choose_dir, run_in_thread
 
@@ -110,10 +111,23 @@ class DataPrepPage(tk.Frame):
                 for w in res.warnings:
                     self.log.write(f" - {w}")
             if not dry:
+                # Auto-generate data.yaml as part of Start Data Prep
+                try:
+                    out_yaml = generate_yaml(res.run_dir, dataset_root=res.run_dir)
+                    self.log.write(f"[YAML] Wrote: {out_yaml}")
+                except Exception as e:  # noqa: BLE001
+                    self.log.write(f"[YAML] Error: {e}")
                 messagebox.showinfo("Done", f"Data prepared at: {res.run_dir}")
             self.btn_dry.config(state="normal")
             self.btn_run.config(state="normal")
             self.log.write("[Done]")
+            # Optional hook for container pages to react on completion
+            try:
+                cb = getattr(self, "on_after_run", None)
+                if callable(cb):
+                    cb(res)
+            except Exception:
+                pass
 
         def _err(exc, tb):
             messagebox.showerror("Error", str(exc))
